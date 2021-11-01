@@ -1702,48 +1702,45 @@ uint8_t Adafruit_PN532::setDataTarget(uint8_t *cmd, uint8_t cmdlen) {
     @param  cmdlen    Command length in bytes
 */
 /**************************************************************************/
-void Adafruit_PN532::writecommand(uint8_t *cmd, uint8_t cmdlen) {
+void Adafruit_PN532::writecommand(uint8_t const * const cmd, const uint8_t cmdlen) {
   if (spi_dev != NULL) {
-    // SPI command write.
-    uint8_t checksum;
-    uint8_t packet[8 + cmdlen];
-    uint8_t *p = packet;
-    cmdlen++;
 
-    p[0] = PN532_SPI_DATAWRITE;
-    p++;
+    const uint8_t kHeaderSize = 7;
+    const uint8_t kFooterSize = 1;
+    const uint8_t kPacketSize = kHeaderSize + cmdlen + kFooterSize
+    const uint8_t kPacketLengthReported = cmdLen + 1;
 
-    p[0] = PN532_PREAMBLE;
-    p++;
-    p[0] = PN532_STARTCODE1;
-    p++;
-    p[0] = PN532_STARTCODE2;
-    p++;
-    checksum = PN532_PREAMBLE + PN532_STARTCODE1 + PN532_STARTCODE2;
+    int idx = 0;
+    uint8_t checksum = 0;
+    uint8_t packet[kPacketSize] = {0};
 
-    p[0] = cmdlen;
-    p++;
-    p[0] = ~cmdlen + 1;
-    p++;
+    // add Packet Header to buffer
+    packet[idx++] = PN532_SPI_DATAWRITE;
+    packet[idx++] = PN532_PREAMBLE;
+    packet[idx++] = PN532_STARTCODE1;
+    packet[idx++] = PN532_STARTCODE2;
+    packet[idx++] = kPacketLengthReported;
+    packet[idx++] = ~kPacketLengthReported + 1;
+    packet[idx++] = PN532_HOSTTOPN532;
 
-    p[0] = PN532_HOSTTOPN532;
-    p++;
-    checksum += PN532_HOSTTOPN532;
+    // checksum so far is constant as packetlength is zeroed out.
+    checksum = PN532_PREAMBLE + PN532_STARTCODE1 + PN532_STARTCODE2 + PN532_HOSTTOPN532;
 
-    for (uint8_t i = 0; i < cmdlen - 1; i++) {
-      p[0] = cmd[i];
-      p++;
+    // Add payload command from arguments
+    for (uint8_t i = 0; i < cmdlen ; i++) {
+      packet[idx++] = cmd[i];
       checksum += cmd[i];
     }
 
-    p[0] = ~checksum;
-    p++;
-    p[0] = PN532_POSTAMBLE;
-    p++;
+    // finish the packet
+    packet[idx++] = ~checksum;
+    packet[idx++] = PN532_POSTAMBLE;
+
+    assert( idx == kPacketSize);
 
 #ifdef PN532DEBUG
     Serial.print("Sending : ");
-    for (int i = 1; i < 8 + cmdlen; i++) {
+    for (int i = 1; i < kPacketSize; i++) {
       Serial.print("0x");
       Serial.print(packet[i], HEX);
       Serial.print(", ");
@@ -1751,7 +1748,7 @@ void Adafruit_PN532::writecommand(uint8_t *cmd, uint8_t cmdlen) {
     Serial.println();
 #endif
 
-    spi_dev->write(packet, 8 + cmdlen);
+    spi_dev->write(packet, kPacketSize);
   } else {
     // I2C command write.
     uint8_t checksum;
